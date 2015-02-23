@@ -1,8 +1,12 @@
 import csv
 import os
+import time
 import uuid
 
 from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 
 class Search:
@@ -18,50 +22,88 @@ class Search:
         self.profile.set_preference('browser.download.dir', RESULT_DIR)
         self.profile.set_preference('browser.helperApps.neverAsk.saveToDisk', 'text/html')
     
+    def wait(self, driver, by, value, time=None):
+        if by == 'id':
+            by = By.ID
+        elif by == 'xpath':
+            by = By.XPATH
+        if not time:
+            time = WAIT
+        return WebDriverWait(driver, time).until(
+            EC.presence_of_element_located((by, value))
+        )
+    
     def search(self, num_iters=1):
-        import ipdb;ipdb.set_trace()
-        
         driver = webdriver.Firefox(self.profile)
         driver.get('http://www.lexisnexis.com/hottopics/lnacademic/?')
         current_windows = driver.window_handles
         main_window = driver.current_window_handle
-        
         driver.switch_to_frame('mainFrame')
         driver.find_element_by_id('lblAdvancDwn').click()
-        driver.find_element_by_id('txtFrmDate').send_keys(self.from_date)
-        driver.find_element_by_id('txtToDate').send_keys(self.to_date)
-        driver.find_element_by_id('selectAll').click()
-        driver.find_element_by_id('sourceTitleAdv').send_keys(self.source)
-#        driver.find_element_by_xpath('//*[@id="titles"]/a').click() #DOESN'T WORK :(
-        driver.find_element_by_id('txtSegTerms').send_keys(self.term)
-        driver.find_element_by_id('OkButt').click()
-        driver.find_element_by_id('srchButt').click()
+        time.sleep(SLEEP)
         
-        result_frame = driver.find_element_by_xpath('//*[@id="fs_main"]/frame[2]')
+        self.wait(driver, 'id', 'advanceDiv')
+        time.sleep(SLEEP)
+        driver.find_element_by_id('txtFrmDate').send_keys(self.from_date)
+        time.sleep(SLEEP)
+        driver.find_element_by_id('txtToDate').send_keys(self.to_date)
+        time.sleep(SLEEP)
+        driver.find_element_by_id('selectAll').click()
+        time.sleep(SLEEP)
+        driver.find_element_by_id('sourceTitleAdv').send_keys(self.source)
+        time.sleep(SLEEP)
+        source_option = self.wait(driver, 'xpath', '//*[@id="titles"]/a')
+        action = source_option.get_attribute('onclick')
+        driver.execute_script(action)
+        time.sleep(SLEEP)
+        driver.find_element_by_id('txtSegTerms').send_keys(self.term)
+        time.sleep(SLEEP)
+        driver.find_element_by_id('OkButt').click()
+        time.sleep(SLEEP)
+        driver.find_element_by_id('srchButt').click()
+        time.sleep(SLEEP)
+        
+        result_frame = self.wait(driver, 'xpath', '//*[@id="fs_main"]/frame[2]')
         result_frame_name = result_frame.get_attribute('name')
         driver.switch_to_frame(result_frame_name)
         driver.find_element_by_xpath('//*[@id="deliveryContainer"]/table/tbody/tr/td[6]/table/tbody/tr/td[1]/table/tbody/tr/td/a[3]/img').click()
+        time.sleep(SLEEP)
         
         total_results = int(driver.find_element_by_name('totalDocsInResult').get_attribute('value'))
         new_windows = driver.window_handles
         download_window = get_most_recent(current_windows, new_windows)
         driver.switch_to_window(download_window)
+        time.sleep(SLEEP)
         
-        driver.find_element_by_xpath('//*[@id="delFmt"]/option[2]').click()
-        if(total_results <= MAX_DOWNLOAD):
+        source_option = self.wait(driver, 'xpath', '//*[@id="delFmt"]/option[2]')
+        source_option.click()
+        time.sleep(SLEEP)
+        if total_results > MAX_LEXISNEXIS_RESULTS:
+            # log
+            # decrease time slot
+            # search again
+            pass
+        elif total_results > MAX_DOWNLOAD:
+            pass
+        else: # total_results <= MAX_DOWNLOAD
             current_files = os.listdir(RESULT_DIR)
-            driver.find_element_by_xpath('//*[@id="img_orig_top"]/a/img').click()
-            driver.find_element_by_xpath('//*[@id="center"]/center/p/a').click()
+            download_button = self.wait(driver, 'xpath', '//*[@id="img_orig_top"]/a/img')
+            download_button.click()
+            time.sleep(SLEEP)
+            download_link = self.wait(driver, 'xpath', '//*[@id="center"]/center/p/a')
+            download_link.click()
+            time.sleep(SLEEP)
+            driver.close()
+            driver.switch_to_window(main_window)
+            
             new_files = os.listdir(RESULT_DIR)
             new_filename = get_most_recent(current_files, new_files)
             result_file = ResultFile(new_filename)
             result_file.set_unique_name()
             result = Result(self, result_file)
             result.write()
-        else:
-            pass
         
-        
+        driver.close()
         print 'GREAT!'
 
 
@@ -70,7 +112,7 @@ class ResultFile:
         self.file_root = os.path.join(RESULT_DIR, filename)
     
     def set_unique_name(self):
-        new_name = '{}-{}.html'.format(self.file_root[:-5], uuid.uuid1())
+        new_name = '{}--{}.html'.format(self.file_root[:-5], uuid.uuid1())
         os.rename(self.file_root, new_name)
         self.file_root = new_name
 
@@ -105,14 +147,18 @@ def get_most_recent(old, new):
     return set(new).difference(set(old)).pop()
 
 
+SLEEP = 0.5
+WAIT = 10
 MAX_DOWNLOAD = 500
+MAX_LEXISNEXIS_RESULTS = 1000
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULT_DIR = os.path.join(CURRENT_DIR, 'documents')
 CSV_DELIMITER = ' '
-CSV_QUOTECHAR = '|'
+CSV_QUOTECHAR = '"'
 
 
 if not os.path.isdir(RESULT_DIR):
     os.makedirs(RESULT_DIR)
-s = Search('director', 'new york times, the', '01/01/1999', '01/02/1999')
+
+s = Search('executive', 'new york times, the', '01/01/1999', '01/02/1999')
 s.search()
