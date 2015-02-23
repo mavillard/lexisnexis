@@ -84,7 +84,16 @@ class Search:
             # search again
             pass
         elif total_results > MAX_DOWNLOAD:
-            pass
+            lower_index = (num_iters - 1) * MAX_DOWNLOAD + 1
+            upper_index = (num_iters - 1) * MAX_DOWNLOAD + MAX_DOWNLOAD
+            if upper_index <= total_results:
+                # download from "lower_index" to "upper_index"
+                # increment num_iters
+                # search again
+                pass
+            else: # upper_index > total_results
+                # download from "lower_index" to "total_results"
+                pass
         else: # total_results <= MAX_DOWNLOAD
             current_files = os.listdir(RESULT_DIR)
             download_button = self.wait(driver, 'xpath', '//*[@id="img_orig_top"]/a/img')
