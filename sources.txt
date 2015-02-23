@@ -1,9 +1,9 @@
-- New York Times
-- LA Times
-- Wall Street Journal
-- Financial Times
-- Business Week
-- Fortune
-- Huffington Post
-- Techcrunch
-- StartupBeat
+New York Times-new york times, the
+LA Times-not found
+Wall Street Journal-wall street journal abstracts-wall street journal reports
+Financial Times-daily financial times
+Business Week-not found
+Fortune-not found
+Huffington Post-huffington post, the
+Techcrunch-not found
+StartupBeat-not found
