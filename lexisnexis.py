@@ -4,6 +4,7 @@ import time
 import uuid
 
 from selenium import webdriver
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -29,11 +30,15 @@ class Search:
             by = By.XPATH
         if not time:
             time = WAIT
-        return WebDriverWait(driver, time).until(
-            EC.presence_of_element_located((by, value))
-        )
+        try:
+            element = WebDriverWait(driver, time).until(
+                EC.presence_of_element_located((by, value))
+            )
+        except TimeoutException:
+            element = None
+        return element
     
-    def search(self, num_iters=1):
+    def search(self):
         driver = webdriver.Firefox(self.profile)
         driver.get('http://www.lexisnexis.com/hottopics/lnacademic/?')
         current_windows = driver.window_handles
@@ -64,56 +69,71 @@ class Search:
         time.sleep(SLEEP)
         
         result_frame = self.wait(driver, 'xpath', '//*[@id="fs_main"]/frame[2]')
-        result_frame_name = result_frame.get_attribute('name')
-        driver.switch_to_frame(result_frame_name)
-        driver.find_element_by_xpath('//*[@id="deliveryContainer"]/table/tbody/tr/td[6]/table/tbody/tr/td[1]/table/tbody/tr/td/a[3]/img').click()
-        time.sleep(SLEEP)
-        
-        total_results = int(driver.find_element_by_name('totalDocsInResult').get_attribute('value'))
-        new_windows = driver.window_handles
-        download_window = get_most_recent(current_windows, new_windows)
-        driver.switch_to_window(download_window)
-        time.sleep(SLEEP)
-        
-        source_option = self.wait(driver, 'xpath', '//*[@id="delFmt"]/option[2]')
-        source_option.click()
-        time.sleep(SLEEP)
-        if total_results > MAX_LEXISNEXIS_RESULTS:
-            # log
-            # decrease time slot
-            # search again
-            pass
-        elif total_results > MAX_DOWNLOAD:
-            lower_index = (num_iters - 1) * MAX_DOWNLOAD + 1
-            upper_index = (num_iters - 1) * MAX_DOWNLOAD + MAX_DOWNLOAD
-            if upper_index <= total_results:
-                # download from "lower_index" to "upper_index"
-                # increment num_iters
+        if not result_frame:
+            log = Log(LOGFILE, self, '0 RESULTS')
+            log.write()
+        else:
+            result_frame_name = result_frame.get_attribute('name')
+            driver.switch_to_frame(result_frame_name)
+            total_results = int(driver.find_element_by_name('totalDocsInResult').get_attribute('value'))
+            
+            if total_results > MAX_LEXISNEXIS_RESULTS:
+                log = Log(LOGFILE, self, '{} RESULTS'.format(MAX_LEXISNEXIS_RESULTS))
+                log.write()
+                # decrease time slot
                 # search again
                 pass
-            else: # upper_index > total_results
-                # download from "lower_index" to "total_results"
-                pass
-        else: # total_results <= MAX_DOWNLOAD
-            current_files = os.listdir(RESULT_DIR)
-            download_button = self.wait(driver, 'xpath', '//*[@id="img_orig_top"]/a/img')
-            download_button.click()
-            time.sleep(SLEEP)
-            download_link = self.wait(driver, 'xpath', '//*[@id="center"]/center/p/a')
-            download_link.click()
-            time.sleep(SLEEP)
-            driver.close()
-            driver.switch_to_window(main_window)
-            
-            new_files = os.listdir(RESULT_DIR)
-            new_filename = get_most_recent(current_files, new_files)
-            result_file = ResultFile(new_filename)
-            result_file.set_unique_name()
-            result = Result(self, result_file)
-            result.write()
-        
-        driver.close()
+            else:
+                # log? CODE 0,1,2
+                total_iters = total_results / MAX_DOWNLOAD + 1
+                for num_iter in range(1, total_iters + 1):
+                    driver.find_element_by_xpath('//*[@id="deliveryContainer"]/table/tbody/tr/td[6]/table/tbody/tr/td[1]/table/tbody/tr/td/a[3]/img').click()
+                    time.sleep(SLEEP)
+                    
+                    new_windows = driver.window_handles
+                    download_window = get_most_recent(current_windows, new_windows)
+                    driver.switch_to_window(download_window)
+                    time.sleep(SLEEP)
+                    
+                    lower_index = (num_iter - 1) * MAX_DOWNLOAD + 1
+                    upper_index = (num_iter - 1) * MAX_DOWNLOAD + MAX_DOWNLOAD
+                    upper_index = min(upper_index, total_results)
+                    driver.find_element_by_id('sel').click()
+                    range_download = '{}-{}'.format(lower_index, upper_index)
+                    driver.find_element_by_id('rangetextbox').send_keys(range_download)
+                    source_option = self.wait(driver, 'xpath', '//*[@id="delFmt"]/option[2]')
+                    source_option.click()
+                    time.sleep(SLEEP)
+                    
+                    current_files = os.listdir(RESULT_DIR)
+                    download_button = self.wait(driver, 'xpath', '//*[@id="img_orig_top"]/a/img')
+                    download_button.click()
+                    time.sleep(SLEEP)
+                    download_link = self.wait(driver, 'xpath', '//*[@id="center"]/center/p/a')
+                    download_link.click()
+                    time.sleep(SLEEP)
+                    driver.close()
+                    current_windows = driver.window_handles
+                    driver.switch_to_window(main_window)
+                    driver.switch_to_frame('mainFrame')
+                    driver.switch_to_frame(result_frame_name)
+                    
+                    new_files = os.listdir(RESULT_DIR)
+                    new_filename = get_most_recent(current_files, new_files)
+                    result_file = ResultFile(new_filename)
+                    result_file.set_unique_name()
+                    result = Result(RESULTFILE, self, result_file)
+                    result.write()
+#        driver.close()
         print 'GREAT!'
+
+
+def get_most_recent(old, new):
+    return set(new).difference(set(old)).pop()
+
+
+def download(search, driver):
+    return set(new).difference(set(old)).pop()
 
 
 class ResultFile:
@@ -127,16 +147,46 @@ class ResultFile:
 
 
 class Result:
-    def __init__(self, search, result_file):
-        self.term = search.term
-        self.source = search.source
-        self.from_date = search.from_date
-        self.to_date = search.to_date
-        self.result_file = result_file.file_root
+    def __init__(self, filename, search, result_file):
+        self.report = Report(
+            filename,
+            search.term,
+            search.source,
+            search.from_date,
+            search.to_date,
+            result_file.file_root
+        )
     
     def write(self):
-        results = os.path.join(CURRENT_DIR, 'results.csv')
-        csvfile = open(results, 'ab')
+        self.report.write()
+
+
+class Log:
+    def __init__(self, filename, search, log):
+        self.report = Report(
+            filename,
+            search.term,
+            search.source,
+            search.from_date,
+            search.to_date,
+            log
+        )
+    
+    def write(self):
+        self.report.write()
+
+
+class Report:
+    def __init__(self, filename, term, source, from_date, to_date, report):
+        self.filepath = os.path.join(CURRENT_DIR, filename)
+        self.term = term
+        self.source = source
+        self.from_date = from_date
+        self.to_date = to_date
+        self.report = report
+    
+    def write(self):
+        csvfile = open(self.filepath, 'ab')
         writer = csv.writer(
             csvfile,
             delimiter=CSV_DELIMITER,
@@ -148,20 +198,18 @@ class Result:
             self.source,
             self.from_date,
             self.to_date,
-            self.result_file
+            self.report
         ])
-
-
-def get_most_recent(old, new):
-    return set(new).difference(set(old)).pop()
 
 
 SLEEP = 0.5
 WAIT = 10
-MAX_DOWNLOAD = 500
+MAX_DOWNLOAD = 20
 MAX_LEXISNEXIS_RESULTS = 1000
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULT_DIR = os.path.join(CURRENT_DIR, 'documents')
+RESULTFILE = 'results.csv'
+LOGFILE = 'log.csv'
 CSV_DELIMITER = ' '
 CSV_QUOTECHAR = '"'
 
