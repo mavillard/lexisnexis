@@ -11,37 +11,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 
-class GlobalSearch:
-    def __init__(self, terms_file, sources_file, global_range, time_slot):
-        self.terms_file = terms_file
-        self.sources_file = sources_file
-        self.range = global_range
-        self.time_slot = time_slot
-    
-    def __
-        
-        profile = webdriver.FirefoxProfile()
-        profile.set_preference('browser.download.folderList', 2)
-        profile.set_preference('browser.download.manager.showWhenStarting', False)
-        profile.set_preference('browser.download.dir', RESULT_DIR)
-        profile.set_preference('browser.helperApps.neverAsk.saveToDisk', 'text/html')
-        self.driver = webdriver.Firefox(profile)
-    
-    def global_search(self, term, sources, global_range, time_slot):
-        ranges = date_range.split(time_slot[0], time_slot[1], time_slot[2])
-        for r in ranges:
-            dates = r.format()
-            s = Search(term, source, dates[0], dates[1])
-            try:
-                result = s.search(self.driver)
-                if result > 0:
-                    reduced_t_s = reduce_time_slot(time_slot, result)
-                    global_search(term, sources, global_range, reduced_t_s)
-            except:
-                log = Log(s, '4: EXCEPTION')
-                log.write()
-
-
 class Search:
     def __init__(self, term, source, from_date, to_date):
         self.term = term
@@ -64,7 +33,8 @@ class Search:
             element = None
         return element
     
-    def search(self, driver)
+    def search(self):
+        driver = DRIVER
         driver.get('http://www.lexisnexis.com/hottopics/lnacademic/?')
         current_windows = driver.window_handles
         main_window = driver.current_window_handle
@@ -109,6 +79,8 @@ class Search:
                 return ntimes
             else:
                 total_iters = total_results / MAX_DOWNLOADS + 1
+                if total_results % MAX_DOWNLOADS == 0:
+                    total_iters -= 1
                 if total_iters > 1:
                     log = Log(self, '2: {} > {} (MAX DOWNLOADS)'.format(total_results, MAX_DOWNLOADS))
                     log.write()
@@ -134,7 +106,7 @@ class Search:
                     current_files = os.listdir(RESULT_DIR)
                     download_button = self.wait(driver, 'xpath', '//*[@id="img_orig_top"]/a/img')
                     download_button.click()
-                    time.sleep(SLEEP)
+                    time.sleep(total_results / 15 + 5) # 5 extra seconds
                     download_link = self.wait(driver, 'xpath', '//*[@id="center"]/center/p/a')
                     download_link.click()
                     time.sleep(SLEEP)
@@ -143,6 +115,7 @@ class Search:
                     driver.switch_to_window(main_window)
                     driver.switch_to_frame('mainFrame')
                     driver.switch_to_frame(result_frame_name)
+                    time.sleep(total_results / 100 + 1) # 1 extra seconds
                     
                     new_files = os.listdir(RESULT_DIR)
                     new_filename = get_most_recent(current_files, new_files)
@@ -150,7 +123,6 @@ class Search:
                     result_file.set_unique_name()
                     result = Result(self, result_file)
                     result.write()
-        driver.close()
         log = Log(self, '0: OK')
         log.write()
         return 0
@@ -277,36 +249,90 @@ class Report:
 
 SLEEP = 0.5
 WAIT = 10
-MAX_DOWNLOADS = 20
-MAX_LEXISNEXIS_RESULTS = 1000
+MAX_DOWNLOADS = 500
+MAX_LEXISNEXIS_RESULTS = 990
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULT_DIR = os.path.join(CURRENT_DIR, 'documents')
 RESULTFILE = os.path.join(CURRENT_DIR, 'results.csv')
 LOGFILE = os.path.join(CURRENT_DIR, 'log.csv')
 TERMFILE = os.path.join(CURRENT_DIR, 'terms.txt')
-SOURCEFILE = os.path.join(CURRENT_DIR, 'sources.txt')
+#SOURCEFILE = os.path.join(CURRENT_DIR, 'sources.txt')
+TERMFILE = os.path.join(CURRENT_DIR, 't.txt')
+SOURCEFILE = os.path.join(CURRENT_DIR, 's.txt')
 CSV_DELIMITER = ' '
 CSV_QUOTECHAR = '"'
 INIT_TIME_SLOT = [0, 3, 0] # years, months, days (priority >)
 START_DATE = [1, 1, 1999] # m, d, Y
-END_DATE = [12, 31, 2014] # m, d, Y
+#END_DATE = [12, 31, 2014] # m, d, Y
+END_DATE = [12, 31, 2001] # m, d, Y
+DRIVER = None
+
+
+def global_search(term, source, global_range, time_slot):
+    ranges = global_range.split(time_slot[0], time_slot[1], time_slot[2])
+    for r in ranges:
+        dates = r.format()
+        s = Search(term, source, dates[0], dates[1])
+        try:
+            result = s.search()
+            if result > 0:
+                reduced_t_s = reduce_time_slot(time_slot)
+                if reduced_t_s != time_slot:
+                    global_search(term, source, r, reduced_t_s)
+                else:
+                    log = Log(s, '4: TIME SLOT IRREDUCIBLE')
+                    log.write()
+        except Exception, e:
+            log = Log(s, '5: EXCEPTION - {}'.format(e.message))
+            log.write()
+
+
+def reduce_time_slot(time_slot):
+    reduced_t_s = list(time_slot)
+    if reduced_t_s[0] > 1:
+        reduced_t_s[0] = 1
+    elif reduced_t_s[0] == 1:
+        reduced_t_s[0] = 0
+        reduced_t_s[1] = 3
+    elif reduced_t_s[1] == 3:
+        reduced_t_s[1] = 1
+    elif reduced_t_s[1] == 1:
+        reduced_t_s[1] = 0
+        reduced_t_s[2] = 7
+    elif reduced_t_s[2] == 7:
+        reduced_t_s[2] = 1
+    return reduced_t_s
 
 
 def start():
     if not os.path.isdir(RESULT_DIR):
         os.makedirs(RESULT_DIR)
     
+    global DRIVER
+    profile = webdriver.FirefoxProfile()
+    profile.set_preference('browser.download.folderList', 2)
+    profile.set_preference('browser.download.manager.showWhenStarting', False)
+    profile.set_preference('browser.download.dir', RESULT_DIR)
+    profile.set_preference('browser.helperApps.neverAsk.saveToDisk', 'text/html')
+    DRIVER = webdriver.Firefox(profile)
+    
     start_date = datetime.datetime(
         year=START_DATE[2],
-        month=START_DATE[1],
-        day=START_DATE[0],
+        month=START_DATE[0],
+        day=START_DATE[1],
     )
     end_date = datetime.datetime(
         year=END_DATE[2],
-        month=END_DATE[1],
-        day=END_DATE[0],
+        month=END_DATE[0],
+        day=END_DATE[1],
     )
     global_range = DateRange(start_date, end_date)
     
-    gs = GlobalSearch(TERMFILE, SOURCEFILE, global_range, INIT_TIME_SLOT)
-    gs.global_search()
+    for source in open(SOURCEFILE):
+        for term in open(TERMFILE):
+            global_search(term.strip(), source.strip(), global_range, INIT_TIME_SLOT)
+    
+    DRIVER.close()
+
+
+start()
