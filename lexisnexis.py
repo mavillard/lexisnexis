@@ -50,12 +50,14 @@ class Search:
         time.sleep(SLEEP)
         driver.find_element_by_id('selectAll').click()
         time.sleep(SLEEP)
+        driver.find_element_by_id('sourceTitleAdv').clear()
         driver.find_element_by_id('sourceTitleAdv').send_keys(self.source)
         time.sleep(SLEEP)
         source_option = self.wait(driver, 'xpath', '//*[@id="titles"]/a')
         action = source_option.get_attribute('onclick')
         driver.execute_script(action)
         time.sleep(SLEEP)
+        driver.find_element_by_id('txtSegTerms').clear()
         driver.find_element_by_id('txtSegTerms').send_keys(self.term)
         time.sleep(SLEEP)
         driver.find_element_by_id('OkButt').click()
@@ -93,36 +95,40 @@ class Search:
                     driver.switch_to_window(download_window)
                     time.sleep(SLEEP)
                     
-                    lower_index = (num_iter - 1) * MAX_DOWNLOADS + 1
-                    upper_index = (num_iter - 1) * MAX_DOWNLOADS + MAX_DOWNLOADS
-                    upper_index = min(upper_index, total_results)
-                    driver.find_element_by_id('sel').click()
-                    range_download = '{}-{}'.format(lower_index, upper_index)
-                    driver.find_element_by_id('rangetextbox').send_keys(range_download)
-                    source_option = self.wait(driver, 'xpath', '//*[@id="delFmt"]/option[2]')
-                    source_option.click()
-                    time.sleep(SLEEP)
-                    
-                    current_files = os.listdir(RESULT_DIR)
-                    download_button = self.wait(driver, 'xpath', '//*[@id="img_orig_top"]/a/img')
-                    download_button.click()
-                    time.sleep(total_results / 15 + 5) # 5 extra seconds
-                    download_link = self.wait(driver, 'xpath', '//*[@id="center"]/center/p/a')
-                    download_link.click()
-                    time.sleep(SLEEP)
-                    driver.close()
-                    current_windows = driver.window_handles
-                    driver.switch_to_window(main_window)
-                    driver.switch_to_frame('mainFrame')
-                    driver.switch_to_frame(result_frame_name)
-                    time.sleep(total_results / 100 + 1) # 1 extra seconds
-                    
-                    new_files = os.listdir(RESULT_DIR)
-                    new_filename = get_most_recent(current_files, new_files)
-                    result_file = ResultFile(new_filename)
-                    result_file.set_unique_name()
-                    result = Result(self, result_file)
-                    result.write()
+                    try:
+                        lower_index = (num_iter - 1) * MAX_DOWNLOADS + 1
+                        upper_index = (num_iter - 1) * MAX_DOWNLOADS + MAX_DOWNLOADS
+                        upper_index = min(upper_index, total_results)
+                        driver.find_element_by_id('sel').click()
+                        range_download = '{}-{}'.format(lower_index, upper_index)
+                        driver.find_element_by_id('rangetextbox').send_keys(range_download)
+                        source_option = self.wait(driver, 'xpath', '//*[@id="delFmt"]/option[2]')
+                        source_option.click()
+                        time.sleep(SLEEP)
+                        
+                        current_files = os.listdir(RESULT_DIR)
+                        download_button = self.wait(driver, 'xpath', '//*[@id="img_orig_top"]/a/img')
+                        download_button.click()
+                        time.sleep(total_results / 15 + 5) # 5 extra seconds
+                        download_link = self.wait(driver, 'xpath', '//*[@id="center"]/center/p/a')
+                        download_link.click()
+                        time.sleep(total_results / 100 + 1) # 1 extra seconds
+                        
+                        new_files = os.listdir(RESULT_DIR)
+                        new_filename = get_most_recent(current_files, new_files)
+                        result_file = ResultFile(new_filename)
+#                        result_file.set_unique_name()
+                        result = Result(self, result_file)
+                        result.write()
+                    except Exception, e:
+                        log = Log(s, '5: EXCEPTION - {}'.format(e.message))
+                        log.write()
+                    finally:
+                        driver.close()
+                        driver.switch_to_window(main_window)
+                        driver.switch_to_frame('mainFrame')
+                        driver.switch_to_frame(result_frame_name)
+                        time.sleep(SLEEP)
         log = Log(self, '0: OK')
         log.write()
         return 0
@@ -144,7 +150,7 @@ class DateRange:
         ranges = []
         from_date = self.start_date
         to_date = DateRange.create_range(from_date, years, months, days)[1]
-        while to_date <= self.end_date:
+        while to_date < self.end_date:
             ranges.append(DateRange(from_date, to_date))
             from_date = to_date + datetime.timedelta(days=+1)
             to_date = DateRange.create_range(from_date, years, months, days)[1]
@@ -262,9 +268,10 @@ SOURCEFILE = os.path.join(CURRENT_DIR, 's.txt')
 CSV_DELIMITER = ' '
 CSV_QUOTECHAR = '"'
 INIT_TIME_SLOT = [0, 3, 0] # years, months, days (priority >)
-START_DATE = [1, 1, 1999] # m, d, Y
+#START_DATE = [1, 1, 1999] # m, d, Y
 #END_DATE = [12, 31, 2014] # m, d, Y
-END_DATE = [12, 31, 2001] # m, d, Y
+START_DATE = [1, 1, 1999] # m, d, Y
+END_DATE = [5, 31, 1999] # m, d, Y
 DRIVER = None
 
 
@@ -298,8 +305,8 @@ def reduce_time_slot(time_slot):
         reduced_t_s[1] = 1
     elif reduced_t_s[1] == 1:
         reduced_t_s[1] = 0
-        reduced_t_s[2] = 7
-    elif reduced_t_s[2] == 7:
+        reduced_t_s[2] = 8
+    elif reduced_t_s[2] == 8:
         reduced_t_s[2] = 1
     return reduced_t_s
 
