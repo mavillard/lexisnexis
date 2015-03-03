@@ -18,20 +18,16 @@ class Search:
         self.from_date = from_date
         self.to_date = to_date
     
-    def wait(self, driver, by, value, time=None):
+    def wait(self, by, value, time=None):
         if by == 'id':
             by = By.ID
         elif by == 'xpath':
             by = By.XPATH
         if not time:
             time = WAIT
-        try:
-            element = WebDriverWait(driver, time).until(
-                EC.presence_of_element_located((by, value))
-            )
-        except TimeoutException:
-            element = None
-        return element
+        return WebDriverWait(DRIVER, time).until(
+            EC.presence_of_element_located((by, value))
+        )
     
     def search(self):
         driver = DRIVER
@@ -42,7 +38,7 @@ class Search:
         driver.find_element_by_id('lblAdvancDwn').click()
         time.sleep(SLEEP)
         
-        self.wait(driver, 'id', 'advanceDiv')
+        self.wait('id', 'advanceDiv')
         time.sleep(SLEEP)
         driver.find_element_by_id('txtFrmDate').send_keys(self.from_date)
         time.sleep(SLEEP)
@@ -53,7 +49,7 @@ class Search:
         driver.find_element_by_id('sourceTitleAdv').clear()
         driver.find_element_by_id('sourceTitleAdv').send_keys(self.source)
         time.sleep(SLEEP)
-        source_option = self.wait(driver, 'xpath', '//*[@id="titles"]/a')
+        source_option = self.wait('xpath', '//*[@id="titles"]/a')
         action = source_option.get_attribute('onclick')
         driver.execute_script(action)
         time.sleep(SLEEP)
@@ -65,7 +61,7 @@ class Search:
         driver.find_element_by_id('srchButt').click()
         time.sleep(SLEEP)
         
-        result_frame = self.wait(driver, 'xpath', '//*[@id="fs_main"]/frame[2]')
+        result_frame = self.wait('xpath', '//*[@id="fs_main"]/frame[2]')
         if not result_frame:
             log = Log(self, '1: NOT FOUND')
             log.write()
@@ -102,15 +98,15 @@ class Search:
                         driver.find_element_by_id('sel').click()
                         range_download = '{}-{}'.format(lower_index, upper_index)
                         driver.find_element_by_id('rangetextbox').send_keys(range_download)
-                        source_option = self.wait(driver, 'xpath', '//*[@id="delFmt"]/option[2]')
+                        source_option = self.wait('xpath', '//*[@id="delFmt"]/option[2]')
                         source_option.click()
                         time.sleep(SLEEP)
                         
                         current_files = os.listdir(RESULT_DIR)
-                        download_button = self.wait(driver, 'xpath', '//*[@id="img_orig_top"]/a/img')
+                        download_button = self.wait('xpath', '//*[@id="img_orig_top"]/a/img')
                         download_button.click()
                         time.sleep(total_results / 15 + 5) # 5 extra seconds
-                        download_link = self.wait(driver, 'xpath', '//*[@id="center"]/center/p/a')
+                        download_link = self.wait('xpath', '//*[@id="center"]/center/p/a')
                         download_link.click()
                         time.sleep(total_results / 100 + 1) # 1 extra seconds
                         
@@ -120,6 +116,9 @@ class Search:
 #                        result_file.set_unique_name()
                         result = Result(self, result_file)
                         result.write()
+                        
+                        log = Log(self, '0: OK')
+                        log.write()
                     except Exception, e:
                         log = Log(s, '5: EXCEPTION - {}'.format(e.message))
                         log.write()
@@ -129,8 +128,6 @@ class Search:
                         driver.switch_to_frame('mainFrame')
                         driver.switch_to_frame(result_frame_name)
                         time.sleep(SLEEP)
-        log = Log(self, '0: OK')
-        log.write()
         return 0
 
 
@@ -251,6 +248,7 @@ class Report:
             self.to_date,
             self.report
         ])
+        print self.term,self.source,self.from_date,self.to_date,self.report
 
 
 SLEEP = 0.5
@@ -265,7 +263,7 @@ TERMFILE = os.path.join(CURRENT_DIR, 'terms.txt')
 #SOURCEFILE = os.path.join(CURRENT_DIR, 'sources.txt')
 TERMFILE = os.path.join(CURRENT_DIR, 't.txt')
 SOURCEFILE = os.path.join(CURRENT_DIR, 's.txt')
-CSV_DELIMITER = ' '
+CSV_DELIMITER = '\t'
 CSV_QUOTECHAR = '"'
 INIT_TIME_SLOT = [0, 3, 0] # years, months, days (priority >)
 #START_DATE = [1, 1, 1999] # m, d, Y
