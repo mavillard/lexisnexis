@@ -2,7 +2,7 @@ import csv
 import sys
 
 
-num_files = sys.argv[1]
+num_files = int(sys.argv[1])
 
 all_files = {}
 for i in range(num_files + 1):
