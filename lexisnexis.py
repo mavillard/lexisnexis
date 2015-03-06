@@ -1,7 +1,9 @@
 import csv
 import datetime
 import os
+import random
 import time
+import sys
 import uuid
 
 from selenium import webdriver
@@ -36,7 +38,6 @@ class Search:
         main_window = driver.current_window_handle
         driver.switch_to_frame('mainFrame')
         driver.find_element_by_id('lblAdvancDwn').click()
-        time.sleep(SLEEP)
         
         self.wait('id', 'advanceDiv')
         time.sleep(SLEEP)
@@ -59,75 +60,72 @@ class Search:
         driver.find_element_by_id('OkButt').click()
         time.sleep(SLEEP)
         driver.find_element_by_id('srchButt').click()
-        time.sleep(SLEEP)
         
-        result_frame = self.wait('xpath', '//*[@id="fs_main"]/frame[2]')
-        if not result_frame:
+        try:
+            result_frame = self.wait('xpath', '//*[@id="fs_main"]/frame[2]')
+        except TimeoutException:
             log = Log(self, '1: NOT FOUND')
             log.write()
-        else:
-            result_frame_name = result_frame.get_attribute('name')
-            driver.switch_to_frame(result_frame_name)
-            total_results = int(driver.find_element_by_name('totalDocsInResult').get_attribute('value'))
+            return 1
+        
+        result_frame_name = result_frame.get_attribute('name')
+        driver.switch_to_frame(result_frame_name)
+        total_results = int(driver.find_element_by_name('totalDocsInResult').get_attribute('value'))
+        
+        if total_results > MAX_LEXISNEXIS_RESULTS:
+            log = Log(self, '2: {} > {} (MAX RESULTS)'.format(total_results, MAX_LEXISNEXIS_RESULTS))
+            log.write()
+            return 2
+        
+        total_iters = total_results / MAX_DOWNLOADS + 1
+        if total_results % MAX_DOWNLOADS == 0:
+            total_iters -= 1
+        if total_iters > 1:
+            log = Log(self, '3: {} > {} (MAX DOWNLOADS)'.format(total_results, MAX_DOWNLOADS))
+            log.write()
+        for num_iter in range(1, total_iters + 1):
+            driver.find_element_by_xpath('//*[@id="deliveryContainer"]/table/tbody/tr/td[6]/table/tbody/tr/td[1]/table/tbody/tr/td/a[3]/img').click()
             
-            if total_results > MAX_LEXISNEXIS_RESULTS:
-                log = Log(self, '3: {} > {} (MAX RESULTS)'.format(total_results, MAX_LEXISNEXIS_RESULTS))
+            new_windows = driver.window_handles
+            download_window = get_most_recent(current_windows, new_windows)
+            driver.switch_to_window(download_window)
+            
+            try:
+                lower_index = (num_iter - 1) * MAX_DOWNLOADS + 1
+                upper_index = (num_iter - 1) * MAX_DOWNLOADS + MAX_DOWNLOADS
+                upper_index = min(upper_index, total_results)
+                driver.find_element_by_id('sel').click()
+                range_download = '{}-{}'.format(lower_index, upper_index)
+                driver.find_element_by_id('rangetextbox').send_keys(range_download)
+                source_option = self.wait('xpath', '//*[@id="delFmt"]/option[2]')
+                source_option.click()
+                
+                current_files = os.listdir(RESULT_DIR)
+                download_button = self.wait('xpath', '//*[@id="img_orig_top"]/a/img')
+                download_button.click()
+                download_link = self.wait('xpath', '//*[@id="center"]/center/p/a', WAIT_MAX_DOCS_READY)
+                download_link.click()
+                
+                time.sleep(total_results / 100 + 1) # 1 extra seconds
+                
+                new_files = os.listdir(RESULT_DIR)
+                new_filename = get_most_recent(current_files, new_files)
+                result_file = ResultFile(new_filename)
+#                result_file.set_unique_name()
+                result = Result(self, result_file)
+                result.write()
+                
+                log = Log(self, '0: OK')
                 log.write()
-                ntimes = total_results / MAX_LEXISNEXIS_RESULTS
-                return ntimes
-            else:
-                total_iters = total_results / MAX_DOWNLOADS + 1
-                if total_results % MAX_DOWNLOADS == 0:
-                    total_iters -= 1
-                if total_iters > 1:
-                    log = Log(self, '2: {} > {} (MAX DOWNLOADS)'.format(total_results, MAX_DOWNLOADS))
-                    log.write()
-                for num_iter in range(1, total_iters + 1):
-                    driver.find_element_by_xpath('//*[@id="deliveryContainer"]/table/tbody/tr/td[6]/table/tbody/tr/td[1]/table/tbody/tr/td/a[3]/img').click()
-                    time.sleep(SLEEP)
-                    
-                    new_windows = driver.window_handles
-                    download_window = get_most_recent(current_windows, new_windows)
-                    driver.switch_to_window(download_window)
-                    time.sleep(SLEEP)
-                    
-                    try:
-                        lower_index = (num_iter - 1) * MAX_DOWNLOADS + 1
-                        upper_index = (num_iter - 1) * MAX_DOWNLOADS + MAX_DOWNLOADS
-                        upper_index = min(upper_index, total_results)
-                        driver.find_element_by_id('sel').click()
-                        range_download = '{}-{}'.format(lower_index, upper_index)
-                        driver.find_element_by_id('rangetextbox').send_keys(range_download)
-                        source_option = self.wait('xpath', '//*[@id="delFmt"]/option[2]')
-                        source_option.click()
-                        time.sleep(SLEEP)
-                        
-                        current_files = os.listdir(RESULT_DIR)
-                        download_button = self.wait('xpath', '//*[@id="img_orig_top"]/a/img')
-                        download_button.click()
-                        time.sleep(total_results / 15 + 5) # 5 extra seconds
-                        download_link = self.wait('xpath', '//*[@id="center"]/center/p/a')
-                        download_link.click()
-                        time.sleep(total_results / 100 + 1) # 1 extra seconds
-                        
-                        new_files = os.listdir(RESULT_DIR)
-                        new_filename = get_most_recent(current_files, new_files)
-                        result_file = ResultFile(new_filename)
-#                        result_file.set_unique_name()
-                        result = Result(self, result_file)
-                        result.write()
-                        
-                        log = Log(self, '0: OK')
-                        log.write()
-                    except Exception, e:
-                        log = Log(s, '5: EXCEPTION - {}'.format(e.message))
-                        log.write()
-                    finally:
-                        driver.close()
-                        driver.switch_to_window(main_window)
-                        driver.switch_to_frame('mainFrame')
-                        driver.switch_to_frame(result_frame_name)
-                        time.sleep(SLEEP)
+            except Exception, e:
+                log = Log(self, '5: CAUGHT EXCEPTION - {}'.format(e.__repr__()))
+                log.write()
+            finally:
+                driver.close()
+                driver.switch_to_window(main_window)
+                driver.switch_to_frame('mainFrame')
+                driver.switch_to_frame(result_frame_name)
+#                time.sleep(SLEEP)
         return 0
 
 
@@ -211,14 +209,17 @@ class Result:
 
 class Log:
     def __init__(self, search, log):
-        self.report = Report(
-            LOGFILE,
-            search.term,
-            search.source,
-            search.from_date,
-            search.to_date,
-            log
-        )
+        if not search:
+            self.report = Report(LOGFILE, '', '', '', '', log)
+        else:
+            self.report = Report(
+                LOGFILE,
+                search.term,
+                search.source,
+                search.from_date,
+                search.to_date,
+                log
+            )
     
     def write(self):
         self.report.write()
@@ -251,28 +252,6 @@ class Report:
         print self.term,self.source,self.from_date,self.to_date,self.report
 
 
-SLEEP = 0.5
-WAIT = 10
-MAX_DOWNLOADS = 500
-MAX_LEXISNEXIS_RESULTS = 990
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-RESULT_DIR = os.path.join(CURRENT_DIR, 'documents')
-RESULTFILE = os.path.join(CURRENT_DIR, 'results.csv')
-LOGFILE = os.path.join(CURRENT_DIR, 'log.csv')
-TERMFILE = os.path.join(CURRENT_DIR, 'terms.txt')
-#SOURCEFILE = os.path.join(CURRENT_DIR, 'sources.txt')
-TERMFILE = os.path.join(CURRENT_DIR, 't.txt')
-SOURCEFILE = os.path.join(CURRENT_DIR, 's.txt')
-CSV_DELIMITER = '\t'
-CSV_QUOTECHAR = '"'
-INIT_TIME_SLOT = [0, 3, 0] # years, months, days (priority >)
-#START_DATE = [1, 1, 1999] # m, d, Y
-#END_DATE = [12, 31, 2014] # m, d, Y
-START_DATE = [1, 1, 1999] # m, d, Y
-END_DATE = [5, 31, 1999] # m, d, Y
-DRIVER = None
-
-
 def global_search(term, source, global_range, time_slot):
     ranges = global_range.split(time_slot[0], time_slot[1], time_slot[2])
     for r in ranges:
@@ -280,7 +259,8 @@ def global_search(term, source, global_range, time_slot):
         s = Search(term, source, dates[0], dates[1])
         try:
             result = s.search()
-            if result > 0:
+            time.sleep(random.randint(1, 5))
+            if result == 2:
                 reduced_t_s = reduce_time_slot(time_slot)
                 if reduced_t_s != time_slot:
                     global_search(term, source, r, reduced_t_s)
@@ -288,7 +268,7 @@ def global_search(term, source, global_range, time_slot):
                     log = Log(s, '4: TIME SLOT IRREDUCIBLE')
                     log.write()
         except Exception, e:
-            log = Log(s, '5: EXCEPTION - {}'.format(e.message))
+            log = Log(s, '5: CAUGHT EXCEPTION - {}'.format(e.__repr__()))
             log.write()
 
 
@@ -309,7 +289,10 @@ def reduce_time_slot(time_slot):
     return reduced_t_s
 
 
-def start():
+def main(term_source_file):
+    start = datetime.datetime.now().strftime('%B %d, %Y at %I:%M:%S %p')
+    print 'Starting search on {}...'.format(start)
+    
     if not os.path.isdir(RESULT_DIR):
         os.makedirs(RESULT_DIR)
     
@@ -333,11 +316,41 @@ def start():
     )
     global_range = DateRange(start_date, end_date)
     
-    for source in open(SOURCEFILE):
-        for term in open(TERMFILE):
-            global_search(term.strip(), source.strip(), global_range, INIT_TIME_SLOT)
+    csvfile = open(term_source_file)
+    reader = csv.reader(csvfile, delimiter=CSV_DELIMITER, quotechar=CSV_QUOTECHAR)
+    for row in reader:
+        try:
+            term = row[0]
+            source = row[1]
+            global_search(term, source, global_range, INIT_TIME_SLOT)
+        except Exception, e:
+            log = Log(None, '6: UNCAUGHT EXCEPTION --{} && {}-- {}'.format(term, source, e.__repr__()))
+            log.write()
     
     DRIVER.close()
+    
+    end = datetime.datetime.now().strftime('%B %d, %Y at %I:%M:%S %p')
+    print 'Search started on {}.'.format(start)
+    print 'Search ended on {}.'.format(end)
 
 
-start()
+SLEEP = 0.5
+WAIT = 10
+WAIT_MAX_DOCS_READY = 60
+MAX_DOWNLOADS = 500
+MAX_LEXISNEXIS_RESULTS = 990
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+RESULT_DIR = os.path.join(CURRENT_DIR, 'documents')
+RESULTFILE = os.path.join(CURRENT_DIR, 'results.csv')
+LOGFILE = os.path.join(CURRENT_DIR, 'log.csv')
+TERMFILE = os.path.join(CURRENT_DIR, 'terms.txt')
+SOURCEFILE = os.path.join(CURRENT_DIR, 'sources.txt')
+CSV_DELIMITER = '\t'
+CSV_QUOTECHAR = '"'
+INIT_TIME_SLOT = [0, 3, 0] # years, months, days (priority >)
+START_DATE = [1, 1, 1999] # m, d, Y
+END_DATE = [12, 31, 2014] # m, d, Y
+DRIVER = None
+
+
+main(sys.argv[1])
